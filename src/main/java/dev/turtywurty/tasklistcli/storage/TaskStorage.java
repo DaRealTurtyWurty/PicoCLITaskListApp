@@ -16,27 +16,34 @@ import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class TaskStorage {
-    private static final Path STORAGE_PATH = getConfigDirectory().resolve("tasks.json");
+    private final Path storagePath;
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private final List<TaskList> taskLists = new ArrayList<>();
     private final AtomicLong lastWrittenTime = new AtomicLong(System.currentTimeMillis());
 
-    public TaskStorage() {
+    public TaskStorage(Path storagePath) {
+        Objects.requireNonNull(storagePath, "Storage path cannot be null");
+        this.storagePath = storagePath;
+
         readTaskLists();
         registerWatchService();
+    }
+
+    public TaskStorage() {
+        this(getConfigDirectory().resolve("tasks.json"));
     }
 
     private void registerWatchService() {
         FileSystem fileSystem = FileSystems.getDefault();
         try {
             WatchService watchService = fileSystem.newWatchService();
-            STORAGE_PATH.getParent().register(watchService, StandardWatchEventKinds.ENTRY_MODIFY);
+            storagePath.getParent().register(watchService, StandardWatchEventKinds.ENTRY_MODIFY);
             var thread = new Thread(() -> listenToFileChanges(watchService), "task-storage-listener");
             thread.setDaemon(true);
             thread.start();
         } catch (IOException exception) {
             System.err.printf("An error occurred watching for changes to file: %s%n Error message: %s%n",
-                    STORAGE_PATH, exception.getLocalizedMessage());
+                    storagePath, exception.getLocalizedMessage());
         }
     }
 
@@ -50,16 +57,16 @@ public class TaskStorage {
                         continue;
 
                     Path changed = (Path) pollEvent.context();
-                    if (!changed.endsWith(STORAGE_PATH.getFileName()))
+                    if (!changed.endsWith(storagePath.getFileName()))
                         continue;
 
                     try {
-                        long lastModifiedTime = Files.getLastModifiedTime(STORAGE_PATH).toMillis();
+                        long lastModifiedTime = Files.getLastModifiedTime(storagePath).toMillis();
                         if (lastModifiedTime <= this.lastWrittenTime.get())
                             continue;
                     } catch (IOException exception) {
                         System.err.printf("Failed to get last modified time for file: %s%nError message: %s%n",
-                                STORAGE_PATH, exception.getLocalizedMessage());
+                                storagePath, exception.getLocalizedMessage());
                         continue;
                     }
 
@@ -70,7 +77,7 @@ public class TaskStorage {
                 key.reset();
             } catch (ClosedWatchServiceException | InterruptedException exception) {
                 System.err.printf("An issue occurred whilst listening for file changes to file: %s%nError message: %s%n",
-                        STORAGE_PATH, exception.getLocalizedMessage());
+                        storagePath, exception.getLocalizedMessage());
                 return;
             }
         }
@@ -88,41 +95,41 @@ public class TaskStorage {
 
     public void updateFileChanged() {
         try {
-            if (Files.notExists(STORAGE_PATH)) {
-                Files.createDirectories(STORAGE_PATH.getParent());
-                Files.createFile(STORAGE_PATH);
+            if (Files.notExists(storagePath)) {
+                Files.createDirectories(storagePath.getParent());
+                Files.createFile(storagePath);
             }
 
-            Files.writeString(STORAGE_PATH, GSON.toJson(this.taskLists));
+            Files.writeString(storagePath, GSON.toJson(this.taskLists));
             this.lastWrittenTime.set(System.currentTimeMillis());
         } catch (IOException exception) {
             System.err.printf("An issue occurred updating the file contents: %s%nError message:%s%n",
-                    STORAGE_PATH, exception.getLocalizedMessage());
+                    storagePath, exception.getLocalizedMessage());
         }
     }
 
     private void readTaskLists() {
         try {
-            if (Files.notExists(STORAGE_PATH)) {
-                Files.createDirectories(STORAGE_PATH.getParent());
-                Files.writeString(STORAGE_PATH, "[]");
+            if (Files.notExists(storagePath)) {
+                Files.createDirectories(storagePath.getParent());
+                Files.writeString(storagePath, "[]");
                 return;
             }
 
-            JsonArray array = GSON.fromJson(Files.readString(STORAGE_PATH, StandardCharsets.UTF_8), JsonArray.class);
+            JsonArray array = GSON.fromJson(Files.readString(storagePath, StandardCharsets.UTF_8), JsonArray.class);
             for (JsonElement element : array) {
                 try {
                     TaskList list = GSON.fromJson(element, TaskList.class);
                     this.taskLists.add(list);
                 } catch (JsonSyntaxException exception) {
                     System.err.printf("Failed to read task list from storage!%nPath:%s%nRaw Element: %s%nException message:%s%n",
-                            STORAGE_PATH, element, exception.getLocalizedMessage());
+                            storagePath, element, exception.getLocalizedMessage());
 
                 }
             }
         } catch (IOException | JsonSyntaxException exception) {
             System.err.printf("A problem occurred reading %s%nError message: %s%n",
-                    STORAGE_PATH, exception.getLocalizedMessage());
+                    storagePath, exception.getLocalizedMessage());
         }
     }
 
@@ -161,7 +168,7 @@ public class TaskStorage {
         return newList;
     }
 
-    public Collection<Task> getAllTasks() {
+    public List<Task> getAllTasks() {
         return this.taskLists.stream().flatMap(list -> list.getTasks().stream()).toList();
     }
 }
