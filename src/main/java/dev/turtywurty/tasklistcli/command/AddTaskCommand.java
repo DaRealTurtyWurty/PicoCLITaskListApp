@@ -24,7 +24,7 @@ public class AddTaskCommand implements AcceptsTaskStorage, Callable<Integer> {
     )
     private String listName;
     @Option(
-            names = {"-t", "--title"},
+            names = {"-t", "--title", "-n", "--name"},
             description = "The title of the task",
             required = true
     )
@@ -45,6 +45,12 @@ public class AddTaskCommand implements AcceptsTaskStorage, Callable<Integer> {
             description = "The due date of the task (YYYY-MM-DD)"
     )
     private String dueDate;
+
+    @Option(
+            names = {"--tags"},
+            description = "A list of tags to add to this task"
+    )
+    private String[] tags;
 
     public AddTaskCommand(TaskStorage storage) {
         this.storage = storage;
@@ -79,6 +85,12 @@ public class AddTaskCommand implements AcceptsTaskStorage, Callable<Integer> {
         task.setDescription(description);
         task.setPriority(priority);
         task.setDueDate(dueDate);
+
+        if (tags != null) {
+            for (String tag : tags) {
+                task.addTag(tag);
+            }
+        }
 
         taskList.addTask(task);
         storage.saveChanges();

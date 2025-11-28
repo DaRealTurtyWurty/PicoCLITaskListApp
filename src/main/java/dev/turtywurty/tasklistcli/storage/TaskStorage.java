@@ -12,6 +12,7 @@ import java.nio.file.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class TaskStorage {
@@ -187,5 +188,12 @@ public class TaskStorage {
 
     public List<Task> getAllTasks() {
         return this.taskLists.stream().flatMap(list -> list.getTasks().stream()).toList();
+    }
+
+    public Task findTaskByUUID(UUID uuid) {
+        return getAllTasks().stream()
+                .filter(task -> task.getUuid().toString().equalsIgnoreCase(uuid.toString()))
+                .findFirst()
+                .orElse(null);
     }
 }

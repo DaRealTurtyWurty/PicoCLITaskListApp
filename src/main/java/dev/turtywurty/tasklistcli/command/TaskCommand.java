@@ -11,7 +11,8 @@ import static picocli.CommandLine.Command;
                 AddTaskCommand.class,
                 ListTasksCommand.class,
                 RemoveTaskCommand.class,
-                CompleteTaskCommand.class
+                CompleteTaskCommand.class,
+                EditTaskCommand.class
         },
         mixinStandardHelpOptions = true,
         version = "Task CLI 1.0"

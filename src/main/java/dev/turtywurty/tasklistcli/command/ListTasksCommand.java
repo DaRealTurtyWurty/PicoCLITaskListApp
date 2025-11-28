@@ -60,6 +60,13 @@ public class ListTasksCommand implements Callable<Integer>, AcceptsTaskStorage {
     )
     private boolean showAllLists;
 
+    @Option(
+            names = {"-id", "--include-ids"},
+            description = "Whether or not to include the IDs in the output",
+            defaultValue = "false"
+    )
+    private boolean includeIDs;
+
     public ListTasksCommand(TaskStorage storage) {
         this.storage = storage;
     }
@@ -79,7 +86,15 @@ public class ListTasksCommand implements Callable<Integer>, AcceptsTaskStorage {
             taskLists.add(taskList);
         }
 
+        if (taskLists.isEmpty() || taskLists.stream().flatMap(taskList -> taskList.getTasks().stream()).toList().isEmpty()) {
+            System.out.println("You have no tasks. Use 'add --list \"list name\" --name \"task name\"' to add a task.");
+            return 0;
+        }
+
         for (TaskList taskList : taskLists) {
+            if (taskList.getTasks().isEmpty())
+                continue;
+
             System.out.println("Tasks in list: " + taskList.getName());
             List<Task> tasks = taskList.getTasks();
 
@@ -100,7 +115,7 @@ public class ListTasksCommand implements Callable<Integer>, AcceptsTaskStorage {
                 if (showIncomplete && task.isCompleted())
                     continue;
 
-                System.out.println(task);
+                System.out.println(task.toString(includeIDs));
             }
         }
 
