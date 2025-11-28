@@ -53,13 +53,29 @@ public class TaskList {
         this.tasks.removeIf(Task::isCompleted);
     }
 
-    public void removeTaskByName(String taskName) {
+    public boolean removeTaskByName(String taskName) {
         Objects.requireNonNull(taskName, "Task name cannot be null");
-        this.tasks.removeIf(t -> t.getName().equalsIgnoreCase(taskName));
+        return this.tasks.removeIf(t -> t.getName().equalsIgnoreCase(taskName));
     }
 
     public boolean hasTask(String taskName) {
         Objects.requireNonNull(taskName, "Task name cannot be null");
         return this.tasks.stream().anyMatch(t -> t.getName().equalsIgnoreCase(taskName));
+    }
+
+    public Task getTask(String taskName, boolean createI) {
+        Objects.requireNonNull(taskName, "Task name cannot be null");
+        for (Task task : this.tasks) {
+            if (task.getName().equalsIgnoreCase(taskName))
+                return task;
+        }
+
+        if (createI) {
+            var newTask = new Task(taskName);
+            addTask(newTask);
+            return newTask;
+        }
+
+        return null;
     }
 }

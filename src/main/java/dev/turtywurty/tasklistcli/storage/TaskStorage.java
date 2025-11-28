@@ -10,27 +10,59 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class TaskStorage {
-    private final Path storagePath;
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    private final Path storagePath;
     private final List<TaskList> taskLists = new ArrayList<>();
-    private final AtomicLong lastWrittenTime = new AtomicLong(System.currentTimeMillis());
+    private final AtomicBoolean internalChange = new AtomicBoolean(false);
 
-    public TaskStorage(Path storagePath) {
+    private final boolean watchForChanges;
+
+    public TaskStorage(Path storagePath, boolean watchForChanges) {
         Objects.requireNonNull(storagePath, "Storage path cannot be null");
         this.storagePath = storagePath;
+        this.watchForChanges = watchForChanges;
 
         readTaskLists();
-        registerWatchService();
+        if (this.watchForChanges) {
+            registerWatchService();
+        }
+    }
+
+    public TaskStorage(Path storagePath) {
+        this(storagePath, true);
     }
 
     public TaskStorage() {
         this(getConfigDirectory().resolve("tasks.json"));
+    }
+
+    private static Path getConfigDirectory() {
+        String userHome = System.getProperty("user.home");
+        return switch (OperatingSystem.CURRENT) {
+            case WINDOWS -> {
+                String roaming = System.getenv("APPDATA");
+                if (roaming != null && !roaming.isBlank()) {
+                    yield Path.of(roaming, TaskListCLI.APPLICATION_NAME);
+                }
+
+                yield Path.of(userHome, "AppData", "Roaming", TaskListCLI.APPLICATION_NAME);
+            }
+            case MAC -> Path.of(userHome, "Library", "Application Support", TaskListCLI.APPLICATION_NAME);
+            case LINUX -> {
+                String xdgConfigHome = System.getenv("XDG_CONFIG_HOME");
+                if (xdgConfigHome != null && !xdgConfigHome.isBlank()) {
+                    yield Path.of(xdgConfigHome, TaskListCLI.APPLICATION_NAME);
+                }
+
+                yield Path.of(userHome, ".config", TaskListCLI.APPLICATION_NAME);
+            }
+            case UNKNOWN -> Path.of(userHome, TaskListCLI.APPLICATION_NAME);
+        };
     }
 
     private void registerWatchService() {
@@ -60,15 +92,8 @@ public class TaskStorage {
                     if (!changed.endsWith(storagePath.getFileName()))
                         continue;
 
-                    try {
-                        long lastModifiedTime = Files.getLastModifiedTime(storagePath).toMillis();
-                        if (lastModifiedTime <= this.lastWrittenTime.get())
-                            continue;
-                    } catch (IOException exception) {
-                        System.err.printf("Failed to get last modified time for file: %s%nError message: %s%n",
-                                storagePath, exception.getLocalizedMessage());
+                    if (this.internalChange.getAndSet(false))
                         continue;
-                    }
 
                     this.taskLists.clear();
                     readTaskLists();
@@ -100,8 +125,8 @@ public class TaskStorage {
                 Files.createFile(storagePath);
             }
 
+            this.internalChange.set(true);
             Files.writeString(storagePath, GSON.toJson(this.taskLists));
-            this.lastWrittenTime.set(System.currentTimeMillis());
         } catch (IOException exception) {
             System.err.printf("An issue occurred updating the file contents: %s%nError message:%s%n",
                     storagePath, exception.getLocalizedMessage());
@@ -109,6 +134,7 @@ public class TaskStorage {
     }
 
     private void readTaskLists() {
+        this.taskLists.clear();
         try {
             if (Files.notExists(storagePath)) {
                 Files.createDirectories(storagePath.getParent());
@@ -116,7 +142,18 @@ public class TaskStorage {
                 return;
             }
 
-            JsonArray array = GSON.fromJson(Files.readString(storagePath, StandardCharsets.UTF_8), JsonArray.class);
+            String content = Files.readString(storagePath, StandardCharsets.UTF_8);
+            if (content == null || content.isBlank())
+                return;
+
+            JsonElement parsed = GSON.fromJson(content, JsonElement.class);
+            if (parsed == null || !parsed.isJsonArray()) {
+                System.err.printf("Unexpected or empty JSON in storage file: %s%nRaw content: %s%n",
+                        storagePath, content);
+                return;
+            }
+
+            JsonArray array = parsed.getAsJsonArray();
             for (JsonElement element : array) {
                 try {
                     TaskList list = GSON.fromJson(element, TaskList.class);
@@ -133,39 +170,19 @@ public class TaskStorage {
         }
     }
 
-    private static Path getConfigDirectory() {
-        String userHome = System.getProperty("user.home");
-        return switch (OperatingSystem.CURRENT) {
-            case WINDOWS -> {
-                String roaming = System.getenv("APPDATA");
-                if (roaming != null && !roaming.isBlank()) {
-                    yield Path.of(roaming, TaskListCLI.APPLICATION_NAME);
-                }
-
-                yield Path.of(userHome, "AppData", "Roaming", TaskListCLI.APPLICATION_NAME);
-            }
-            case MAC -> Path.of(userHome, "Library", "Application Support", TaskListCLI.APPLICATION_NAME);
-            case LINUX -> {
-                String xdgConfigHome = System.getenv("XDG_CONFIG_HOME");
-                if (xdgConfigHome != null && !xdgConfigHome.isBlank()) {
-                    yield Path.of(xdgConfigHome, TaskListCLI.APPLICATION_NAME);
-                }
-
-                yield Path.of(userHome, ".config", TaskListCLI.APPLICATION_NAME);
-            }
-            case UNKNOWN -> Path.of(userHome, TaskListCLI.APPLICATION_NAME);
-        };
-    }
-
-    public TaskList getTaskList(String listName) {
+    public TaskList getTaskList(String listName, boolean createIfAbsent) {
         for (TaskList list : this.taskLists) {
             if (list.getName().equalsIgnoreCase(listName))
                 return list;
         }
 
-        var newList = new TaskList(listName);
-        addTaskList(newList);
-        return newList;
+        if (createIfAbsent) {
+            var newList = new TaskList(listName);
+            addTaskList(newList);
+            return newList;
+        }
+
+        return null;
     }
 
     public List<Task> getAllTasks() {

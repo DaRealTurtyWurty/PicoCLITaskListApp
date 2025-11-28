@@ -8,10 +8,10 @@ import static picocli.CommandLine.Command;
         name = "task",
         description = "Manage your tasks",
         subcommands = {
-                AddTaskCommand.class/*,
+                AddTaskCommand.class,
                 ListTasksCommand.class,
                 RemoveTaskCommand.class,
-                CompleteTaskCommand.class*/
+                CompleteTaskCommand.class
         },
         mixinStandardHelpOptions = true,
         version = "Task CLI 1.0"
