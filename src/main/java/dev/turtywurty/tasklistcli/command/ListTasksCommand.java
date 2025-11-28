@@ -4,6 +4,7 @@ import dev.turtywurty.tasklistcli.storage.AcceptsTaskStorage;
 import dev.turtywurty.tasklistcli.storage.TaskStorage;
 import dev.turtywurty.tasklistcli.storage.data.Task;
 import dev.turtywurty.tasklistcli.storage.data.TaskList;
+import dev.turtywurty.tasklistcli.util.TimeUtils;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -26,26 +27,38 @@ public class ListTasksCommand implements Callable<Integer>, AcceptsTaskStorage {
             defaultValue = "default"
     )
     private String listName;
-    @Option(
-            names = {"-a", "--all"},
-            description = "Show all tasks, including completed ones"
-    )
-    private boolean showAll;
+
     @Option(
             names = {"-p", "--priority"},
             description = "Filter tasks by priority (low, medium, high)"
     )
     private String priorityFilter;
+
     @Option(
             names = {"-d", "--due-before"},
             description = "Show tasks due before the specified date (YYYY-MM-DD)"
     )
     private String dueBefore;
+
     @Option(
             names = {"-c", "--completed"},
             description = "Show only completed tasks"
     )
     private boolean showCompleted;
+
+    @Option(
+            names = {"-i", "--incomplete"},
+            description = "Show only incomplete tasks",
+            defaultValue = "false"
+    )
+    private boolean showIncomplete;
+
+    @Option(
+            names = {"-e", "--everything"},
+            description = "Show all tasks from all lists",
+            defaultValue = "false"
+    )
+    private boolean showAllLists;
 
     public ListTasksCommand(TaskStorage storage) {
         this.storage = storage;
@@ -53,37 +66,42 @@ public class ListTasksCommand implements Callable<Integer>, AcceptsTaskStorage {
 
     @Override
     public Integer call() {
-        TaskList taskList = storage.getTaskList(listName, false);
-        if (taskList == null) {
-            System.out.println("Task list '" + listName + "' does not exist.");
-            return 1;
+        List<TaskList> taskLists = new ArrayList<>();
+        if (showAllLists) {
+            taskLists.addAll(storage.getTaskLists());
+        } else {
+            TaskList taskList = storage.getTaskList(listName, false);
+            if (taskList == null) {
+                System.out.println("Task list '" + listName + "' does not exist.");
+                return 1;
+            }
+
+            taskLists.add(taskList);
         }
 
-        List<Task> tasks = new ArrayList<>(taskList.getTasks());
-        if (priorityFilter != null) {
-            tasks.removeIf(task -> !task.getPriority().name().equalsIgnoreCase(priorityFilter));
-        }
+        for (TaskList taskList : taskLists) {
+            System.out.println("Tasks in list: " + taskList.getName());
+            List<Task> tasks = taskList.getTasks();
 
-        if (dueBefore != null) {
-            tasks.removeIf(task -> task.getDueDate() == null || !LocalDate.parse(task.getDueDate()).isBefore(LocalDate.parse(dueBefore)));
-        }
+            for (Task task : tasks) {
+                if (priorityFilter != null && !task.getPriority().name().equalsIgnoreCase(priorityFilter))
+                    continue;
 
-        if (showCompleted) {
-            tasks.removeIf(task -> !task.isCompleted());
-        } else if (!showAll) {
-            tasks.removeIf(Task::isCompleted);
-        }
+                if (dueBefore != null) {
+                    LocalDate dueDate = TimeUtils.parseOrNull(dueBefore);
+                    LocalDate taskDueDate = TimeUtils.parseOrNull(task.getDueDate());
+                    if (dueDate == null || taskDueDate == null || !taskDueDate.isBefore(dueDate))
+                        continue;
+                }
 
-        if (tasks.isEmpty()) {
-            System.out.println("No tasks found in list '" + listName + "'.");
-            return 0;
-        }
+                if (showCompleted && !task.isCompleted())
+                    continue;
 
-        System.out.println("Tasks in list '" + listName + "':");
-        for (var task : tasks) {
-            System.out.println("- [" + (task.isCompleted() ? "x" : " ") + "] " + task.getName() +
-                    (task.getDueDate() != null ? " (Due: " + task.getDueDate() + ")" : "") +
-                    " [Priority: " + task.getPriority() + "]");
+                if (showIncomplete && task.isCompleted())
+                    continue;
+
+                System.out.println(task);
+            }
         }
 
         return 0;

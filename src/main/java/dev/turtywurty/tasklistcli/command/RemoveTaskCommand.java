@@ -43,7 +43,7 @@ public class RemoveTaskCommand implements Callable<Integer>, AcceptsTaskStorage 
 
         boolean removed = taskList.removeTaskByName(taskName);
         if (removed) {
-            storage.updateFileChanged();
+            storage.saveChanges();
             System.out.println("Task '" + taskName + "' removed from list '" + listName + "'.");
             return 0;
         } else {

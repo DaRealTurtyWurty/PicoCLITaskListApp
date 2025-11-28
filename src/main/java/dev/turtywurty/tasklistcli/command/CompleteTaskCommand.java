@@ -56,7 +56,7 @@ public class CompleteTaskCommand implements Callable<Integer>, AcceptsTaskStorag
         }
 
         task.setCompleted(this.completed);
-        this.storage.updateFileChanged();
+        this.storage.saveChanges();
         System.out.printf("Task '%s' in list '%s' marked as %s completed.%n", this.taskName, this.listName, this.completed ? "" : "not");
         return 0;
     }

@@ -81,7 +81,7 @@ public class AddTaskCommand implements AcceptsTaskStorage, Callable<Integer> {
         task.setDueDate(dueDate);
 
         taskList.addTask(task);
-        storage.updateFileChanged();
+        storage.saveChanges();
         return 0;
     }
 }

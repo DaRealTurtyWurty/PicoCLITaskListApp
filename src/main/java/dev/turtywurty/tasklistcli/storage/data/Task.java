@@ -53,6 +53,14 @@ public class Task {
         this.completed = completed;
     }
 
+    @Override
+    public String toString() {
+        return "[" + (completed ? "X" : " ") + "] " + name +
+                (priority != null ? " (Priority: " + priority + ")" : "") +
+                (dueDate != null ? " (Due: " + dueDate + ")" : "") +
+                (description != null ? " - " + description : "");
+    }
+
     public enum Priority {
         LOW,
         MEDIUM,

@@ -115,10 +115,10 @@ public class TaskStorage {
     public void addTaskList(TaskList list) {
         Objects.requireNonNull(list, "Task list cannot be null");
         this.taskLists.add(list);
-        updateFileChanged();
+        saveChanges();
     }
 
-    public void updateFileChanged() {
+    public void saveChanges() {
         try {
             if (Files.notExists(storagePath)) {
                 Files.createDirectories(storagePath.getParent());

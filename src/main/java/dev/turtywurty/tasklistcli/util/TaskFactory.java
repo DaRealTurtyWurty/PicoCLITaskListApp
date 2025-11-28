@@ -14,4 +14,8 @@ public class TaskFactory implements CommandLine.IFactory {
                 ? cls.getConstructor(TaskStorage.class).newInstance(storage)
                 : delegate.create(cls);
     }
+
+    public TaskStorage getStorage() {
+        return this.storage;
+    }
 }
