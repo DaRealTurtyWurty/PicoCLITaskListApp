@@ -1,49 +1,58 @@
 package dev.turtywurty.tasklistcli;
 
-import dev.turtywurty.tasklistcli.command.TaskCommand;
 import dev.turtywurty.tasklistcli.storage.TaskStorage;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import picocli.CommandLine;
 
-import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class RemoveTaskTest {
-    private static CommandLine createCLI(TaskStorage storage) {
-        return new CommandLine(new TaskCommand(), new CommandLine.IFactory() {
-            @Override
-            public <K> K create(Class<K> cls) throws Exception {
-                return cls.getConstructor(TaskStorage.class).newInstance(storage);
-            }
-        });
+    @TempDir
+    Path tempDir;
+
+    private TaskStorage storage;
+    private CommandLine cli;
+
+    @BeforeEach
+    void setup() {
+        this.storage = new TaskStorage(tempDir.resolve("tasks.json"), false);
+        this.cli = CommandTestUtils.createCommandLine(this.storage);
     }
 
     @Test
-    public void testRemoveTask() throws IOException {
-        Path tempPath = Files.createTempFile("tasklistcli-test", ".json");
-        var storage = new TaskStorage(tempPath, false);
-        CommandLine cli = createCLI(storage);
-        cli.execute("add", "--title", "Buy milk");
-        int exitCode = cli.execute("remove", "--name", "Buy milk");
+    void removesExistingTask() {
+        this.cli.execute("add", "--title", "Buy milk");
+        int exitCode = this.cli.execute("remove", "--name", "Buy milk");
 
         assertEquals(0, exitCode);
-        assertEquals(0, storage.getAllTasks().size());
-
-        Files.deleteIfExists(tempPath);
+        assertTrue(this.storage.getAllTasks().isEmpty());
     }
 
     @Test
-    public void testRemoveNonExistentTask() throws IOException {
-        Path tempPath = Files.createTempFile("tasklistcli-test", ".json");
-        var storage = new TaskStorage(tempPath, false);
-        CommandLine cli = createCLI(storage);
-        int exitCode = cli.execute("remove", "--name", "Buy milk");
+    void removingMissingTaskFails() {
+        // Ensure the default list exists but is empty
+        this.storage.getTaskList("default", true);
 
-        assertEquals(1, exitCode);
+        try (var io = CommandTestUtils.captureIO()) {
+            int exitCode = this.cli.execute("remove", "--name", "Buy milk");
+            assertEquals(1, exitCode);
+            assertTrue(io.out().contains("Task 'Buy milk' not found in list 'default'."));
+        }
+    }
 
-        Files.deleteIfExists(tempPath);
+    @Test
+    void removingFromMissingListFails() {
+        this.cli.execute("add", "--list", "Errands", "--title", "Buy groceries");
+
+        try (var io = CommandTestUtils.captureIO()) {
+            int exitCode = this.cli.execute("remove", "--list", "Work", "--name", "Buy groceries");
+            assertEquals(1, exitCode);
+            assertTrue(io.out().contains("Task list 'Work' does not exist."));
+        }
     }
 }

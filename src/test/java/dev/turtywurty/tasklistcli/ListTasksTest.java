@@ -1,160 +1,136 @@
 package dev.turtywurty.tasklistcli;
 
-import dev.turtywurty.tasklistcli.command.TaskCommand;
 import dev.turtywurty.tasklistcli.storage.TaskStorage;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import picocli.CommandLine;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.PrintStream;
-import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 public class ListTasksTest {
-    private static CommandLine createCLI(TaskStorage storage) {
-        return new CommandLine(new TaskCommand(), new CommandLine.IFactory() {
-            @Override
-            public <K> K create(Class<K> cls) throws Exception {
-                return cls.getConstructor(TaskStorage.class).newInstance(storage);
-            }
-        });
+    @TempDir
+    Path tempDir;
+
+    private TaskStorage storage;
+    private CommandLine cli;
+
+    @BeforeEach
+    void setup() {
+        this.storage = new TaskStorage(tempDir.resolve("tasks.json"), false);
+        this.cli = CommandTestUtils.createCommandLine(this.storage);
     }
 
     @Test
-    public void testListNoTasks() throws IOException {
-        Path tempPath = Files.createTempFile("tasklistcli-test", ".json");
-        var storage = new TaskStorage(tempPath, false);
-        CommandLine cli = createCLI(storage);
-
-        var baos = new ByteArrayOutputStream();
-        System.setOut(new PrintStream(baos));
-
-        int exitCode = cli.execute("list");
-
-        System.setOut(System.out);
-
-        assertEquals(1, exitCode);
-        assertTrue(baos.toString().contains("Task list 'default' does not exist."));
-
-        Files.deleteIfExists(tempPath);
+    void listingNonexistentListFails() {
+        try (var io = CommandTestUtils.captureIO()) {
+            int exitCode = this.cli.execute("list", "--list", "nonexistent");
+            assertEquals(1, exitCode);
+            assertTrue(io.out().contains("Task list 'nonexistent' does not exist."));
+        }
     }
 
     @Test
-    public void testListNonExistentList() throws IOException {
-        Path tempPath = Files.createTempFile("tasklistcli-test", ".json");
-        var storage = new TaskStorage(tempPath, false);
-        CommandLine cli = createCLI(storage);
-
-        var baos = new ByteArrayOutputStream();
-        System.setOut(new PrintStream(baos));
-
-        int exitCode = cli.execute("list", "--list", "nonexistent");
-
-        System.setOut(System.out);
-
-        assertEquals(1, exitCode);
-        assertTrue(baos.toString().contains("Task list 'nonexistent' does not exist."));
-
-        Files.deleteIfExists(tempPath);
+    void listingAllWithNoTasksShowsHint() {
+        try (var io = CommandTestUtils.captureIO()) {
+            int exitCode = this.cli.execute("list", "--everything");
+            assertEquals(0, exitCode);
+            assertTrue(io.out().contains("You have no tasks. Use 'add --list \"list name\" --name \"task name\"' to add a task."));
+        }
     }
 
     @Test
-    public void testListAllTasks() throws IOException {
-        Path tempPath = Files.createTempFile("tasklistcli-test", ".json");
-        var storage = new TaskStorage(tempPath, false);
-        CommandLine cli = createCLI(storage);
-        cli.execute("add", "--title", "Buy milk");
-        cli.execute("add", "--title", "Walk the dog");
-        cli.execute("complete", "--list", "default", "--task", "Walk the dog");
+    void listsTasksFromSpecificList() {
+        this.cli.execute("add", "--title", "Buy milk");
+        this.cli.execute("add", "--title", "Walk the dog");
 
-        var baos = new ByteArrayOutputStream();
-        System.setOut(new PrintStream(baos));
-
-        int exitCode = cli.execute("list", "--all");
-
-        System.setOut(System.out);
-
-        assertEquals(0, exitCode);
-        String output = baos.toString();
-        assertTrue(output.contains("Buy milk"));
-        assertTrue(output.contains("Walk the dog"));
-
-        Files.deleteIfExists(tempPath);
+        try (var io = CommandTestUtils.captureIO()) {
+            int exitCode = this.cli.execute("list", "--list", "default");
+            assertEquals(0, exitCode);
+            String output = io.out();
+            assertTrue(output.contains("Tasks in list: default"));
+            assertTrue(output.contains("Buy milk"));
+            assertTrue(output.contains("Walk the dog"));
+        }
     }
 
     @Test
-    public void testFilterByPriority() throws IOException {
-        Path tempPath = Files.createTempFile("tasklistcli-test", ".json");
-        var storage = new TaskStorage(tempPath, false);
-        CommandLine cli = createCLI(storage);
-        cli.execute("add", "--title", "Buy milk", "--priority", "high");
-        cli.execute("add", "--title", "Walk the dog", "--priority", "low");
+    void filtersByPriority() {
+        this.cli.execute("add", "--title", "Buy milk", "--priority", "high");
+        this.cli.execute("add", "--title", "Walk the dog", "--priority", "low");
 
-        var baos = new ByteArrayOutputStream();
-        System.setOut(new PrintStream(baos));
-
-        int exitCode = cli.execute("list", "--priority", "high");
-
-        System.setOut(System.out);
-
-        assertEquals(0, exitCode);
-        String output = baos.toString();
-        assertTrue(output.contains("Buy milk"));
-        assertTrue(output.contains("[Priority: HIGH]"));
-        assertFalse(output.contains("Walk the dog"));
-
-        Files.deleteIfExists(tempPath);
+        try (var io = CommandTestUtils.captureIO()) {
+            int exitCode = this.cli.execute("list", "--priority", "high");
+            assertEquals(0, exitCode);
+            String output = io.out();
+            assertTrue(output.contains("Buy milk"));
+            assertTrue(output.contains("(Priority: HIGH)"));
+            assertFalse(output.contains("Walk the dog"));
+        }
     }
 
     @Test
-    public void testFilterByDueDate() throws IOException {
-        Path tempPath = Files.createTempFile("tasklistcli-test", ".json");
-        var storage = new TaskStorage(tempPath, false);
-        CommandLine cli = createCLI(storage);
-        cli.execute("add", "--title", "Buy milk", "--due-date", "2025-12-01");
-        cli.execute("add", "--title", "Walk the dog", "--due-date", "2025-12-31");
+    void filtersByDueDate() {
+        this.cli.execute("add", "--title", "Buy milk", "--due-date", "2025-12-01");
+        this.cli.execute("add", "--title", "Walk the dog", "--due-date", "2025-12-31");
 
-        var baos = new ByteArrayOutputStream();
-        System.setOut(new PrintStream(baos));
-
-        int exitCode = cli.execute("list", "--due-before", "2025-12-15");
-
-        System.setOut(System.out);
-
-        assertEquals(0, exitCode);
-        String output = baos.toString();
-        assertTrue(output.contains("Buy milk"));
-        assertTrue(output.contains("(Due: 2025-12-01)"));
-        assertFalse(output.contains("Walk the dog"));
-
-        Files.deleteIfExists(tempPath);
+        try (var io = CommandTestUtils.captureIO()) {
+            int exitCode = this.cli.execute("list", "--due-before", "2025-12-15");
+            assertEquals(0, exitCode);
+            String output = io.out();
+            assertTrue(output.contains("Buy milk"));
+            assertTrue(output.contains("(Due: 2025-12-01)"));
+            assertFalse(output.contains("Walk the dog"));
+        }
     }
 
     @Test
-    public void testShowOnlyCompleted() throws IOException {
-        Path tempPath = Files.createTempFile("tasklistcli-test", ".json");
-        var storage = new TaskStorage(tempPath, false);
-        CommandLine cli = createCLI(storage);
-        cli.execute("add", "--title", "Buy milk");
-        cli.execute("add", "--title", "Walk the dog");
-        cli.execute("complete", "--list", "default", "--task", "Walk the dog");
+    void showsOnlyCompletedTasks() {
+        this.cli.execute("add", "--title", "Buy milk");
+        this.cli.execute("add", "--title", "Walk the dog");
+        this.cli.execute("complete", "--list", "default", "--task", "Walk the dog");
 
-        var baos = new ByteArrayOutputStream();
-        System.setOut(new PrintStream(baos));
+        try (var io = CommandTestUtils.captureIO()) {
+            int exitCode = this.cli.execute("list", "--completed");
+            assertEquals(0, exitCode);
+            String output = io.out();
+            assertFalse(output.contains("Buy milk"));
+            assertTrue(output.contains("Walk the dog"));
+            assertTrue(output.contains("[X]"));
+        }
+    }
 
-        int exitCode = cli.execute("list", "--completed");
+    @Test
+    void showsOnlyIncompleteTasks() {
+        this.cli.execute("add", "--title", "Buy milk");
+        this.cli.execute("add", "--title", "Walk the dog");
+        this.cli.execute("complete", "--list", "default", "--task", "Walk the dog");
 
-        System.setOut(System.out);
+        try (var io = CommandTestUtils.captureIO()) {
+            int exitCode = this.cli.execute("list", "--incomplete");
+            assertEquals(0, exitCode);
+            String output = io.out();
+            assertTrue(output.contains("Buy milk"));
+            assertFalse(output.contains("Walk the dog"));
+        }
+    }
 
-        assertEquals(0, exitCode);
-        String output = baos.toString();
-        assertFalse(output.contains("Buy milk"));
-        assertTrue(output.contains("Walk the dog"));
-        assertTrue(output.contains("[x]"));
+    @Test
+    void listsAcrossAllListsAndIncludesIds() {
+        this.cli.execute("add", "--title", "Buy milk");
+        this.cli.execute("add", "--list", "Work", "--title", "Write report", "--priority", "high");
 
-        Files.deleteIfExists(tempPath);
+        try (var io = CommandTestUtils.captureIO()) {
+            int exitCode = this.cli.execute("list", "--everything", "--include-ids");
+            assertEquals(0, exitCode);
+            String output = io.out();
+            assertTrue(output.contains("Tasks in list: default"));
+            assertTrue(output.contains("Tasks in list: Work"));
+            assertTrue(output.contains("Buy milk"));
+            assertTrue(output.contains("Write report"));
+            assertTrue(output.contains("ID:"));
+        }
     }
 }

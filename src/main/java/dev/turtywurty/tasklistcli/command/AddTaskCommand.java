@@ -84,7 +84,9 @@ public class AddTaskCommand implements AcceptsTaskStorage, Callable<Integer> {
         var task = new Task(title);
         task.setDescription(description);
         task.setPriority(priority);
-        task.setDueDate(dueDate);
+        if (this.dueDate != null) {
+            task.setDueDate(this.dueDate);
+        }
 
         if (tags != null) {
             for (String tag : tags) {
